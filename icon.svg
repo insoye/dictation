@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f8ef7"/>
+      <stop offset="0.55" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#4f46e5"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.3" cy="0.15" r="0.9">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mic" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e4ecff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 배경: 라운드 스퀘어 + 그라데이션 + 상단 하이라이트 -->
+  <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="232" fill="url(#glow)"/>
+
+  <!-- 사운드 웨이브 (좌우) -->
+  <g stroke="#ffffff" stroke-width="34" stroke-linecap="round" opacity="0.45" fill="none">
+    <path d="M 250 430 v 100"/>
+    <path d="M 168 465 v 30"/>
+    <path d="M 774 430 v 100"/>
+    <path d="M 856 465 v 30"/>
+  </g>
+
+  <!-- 마이크 -->
+  <g>
+    <rect x="422" y="208" width="180" height="330" rx="90" fill="url(#mic)"/>
+    <path d="M 330 452 v 20 a 182 182 0 0 0 364 0 v -20"
+          fill="none" stroke="#ffffff" stroke-width="52" stroke-linecap="round"/>
+    <path d="M 512 672 v 78" stroke="#ffffff" stroke-width="52" stroke-linecap="round"/>
+    <path d="M 400 796 h 224" stroke="#ffffff" stroke-width="52" stroke-linecap="round"/>
+  </g>
+</svg>
