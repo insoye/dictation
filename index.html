@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>받아쓰기</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --text: #1a1d21;
+    --muted: #8a919c;
+    --accent: #2563eb;
+    --accent-active: #dc2626;
+    --border: #e2e5ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --card: #1e2127;
+      --text: #e8eaed;
+      --muted: #7d8590;
+      --border: #2e323a;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+  .container {
+    width: 100%;
+    max-width: 640px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 2px;
+  }
+  h1 { font-size: 20px; font-weight: 700; }
+  select {
+    font-size: 14px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    -webkit-appearance: none;
+  }
+  #transcript {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    font-size: 17px;
+    line-height: 1.7;
+    flex: 1;
+    min-height: 240px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  #transcript:empty::before,
+  #transcript.placeholder::before {
+    content: attr(data-placeholder);
+    color: var(--muted);
+  }
+  .interim { color: var(--muted); }
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+  }
+  .side-btn {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .side-btn:active { transform: scale(0.92); }
+  #micBtn {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-size: 30px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(37, 99, 235, 0.35);
+    transition: transform 0.1s, background 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #micBtn:active { transform: scale(0.94); }
+  #micBtn.listening {
+    background: var(--accent-active);
+    box-shadow: 0 4px 16px rgba(220, 38, 38, 0.35);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+    50% { box-shadow: 0 0 0 14px rgba(220, 38, 38, 0); }
+  }
+  #status {
+    text-align: center;
+    font-size: 14px;
+    color: var(--muted);
+    min-height: 20px;
+  }
+  #status.error { color: var(--accent-active); }
+  .toast {
+    position: fixed;
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: var(--bg);
+    padding: 10px 18px;
+    border-radius: 20px;
+    font-size: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>🎙️ 받아쓰기</h1>
+    <select id="langSelect" aria-label="인식 언어">
+      <option value="ko-KR" selected>한국어</option>
+      <option value="en-US">English</option>
+      <option value="ja-JP">日本語</option>
+      <option value="zh-CN">中文</option>
+    </select>
+  </header>
+
+  <div id="transcript" data-placeholder="마이크 버튼을 누르고 말하면 여기에 표시됩니다."></div>
+
+  <div id="status"></div>
+
+  <div class="controls">
+    <button class="side-btn" id="clearBtn" title="지우기" aria-label="지우기">🗑️</button>
+    <button id="micBtn" title="받아쓰기 시작" aria-label="받아쓰기 시작">🎤</button>
+    <button class="side-btn" id="copyBtn" title="복사" aria-label="복사">📋</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const transcriptEl = document.getElementById('transcript');
+  const micBtn = document.getElementById('micBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const copyBtn = document.getElementById('copyBtn');
+  const statusEl = document.getElementById('status');
+  const langSelect = document.getElementById('langSelect');
+  const toastEl = document.getElementById('toast');
+
+  if (!SR) {
+    statusEl.textContent = '이 브라우저는 음성 인식을 지원하지 않습니다. 데스크톱 크롬 또는 iOS 사파리를 사용해 주세요.';
+    statusEl.classList.add('error');
+    micBtn.disabled = true;
+    micBtn.style.opacity = '0.4';
+    return;
+  }
+
+  const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  let recognition = null;
+  let listening = false;      // 사용자가 켜둔 상태인지 (자동 재시작 판단용)
+  let committedText = '';     // 이전 세션까지 확정된 텍스트
+  let sessionFinal = '';      // 현재 세션에서 확정된 텍스트
+  let toastTimer = null;
+
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
+  }
+
+  function render(interim) {
+    const finalText = (committedText + sessionFinal).trimStart();
+    transcriptEl.classList.toggle('placeholder', !finalText && !interim);
+    transcriptEl.innerHTML = '';
+    if (finalText) transcriptEl.appendChild(document.createTextNode(finalText));
+    if (interim) {
+      const span = document.createElement('span');
+      span.className = 'interim';
+      span.textContent = (finalText ? ' ' : '') + interim;
+      transcriptEl.appendChild(span);
+    }
+    transcriptEl.scrollTop = transcriptEl.scrollHeight;
+  }
+
+  function updateUI() {
+    micBtn.classList.toggle('listening', listening);
+    micBtn.textContent = listening ? '⏹' : '🎤';
+    micBtn.title = listening ? '받아쓰기 중지' : '받아쓰기 시작';
+    if (listening) {
+      statusEl.textContent = '듣는 중… 말씀하세요.';
+      statusEl.classList.remove('error');
+    } else if (!statusEl.classList.contains('error')) {
+      statusEl.textContent = '';
+    }
+  }
+
+  function commitSession() {
+    if (sessionFinal) {
+      committedText = (committedText + sessionFinal).replace(/\s+$/, '') + ' ';
+      sessionFinal = '';
+    }
+  }
+
+  function createRecognition() {
+    const r = new SR();
+    r.lang = langSelect.value;
+    r.interimResults = true;
+    // iOS 사파리는 continuous 모드가 불안정해서 짧은 세션 + 자동 재시작으로 처리
+    r.continuous = !IS_IOS;
+    r.maxAlternatives = 1;
+
+    r.onresult = function (e) {
+      let interim = '';
+      sessionFinal = '';
+      for (let i = 0; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) sessionFinal += t;
+        else interim += t;
+      }
+      render(interim);
+    };
+
+    r.onerror = function (e) {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        listening = false;
+        statusEl.textContent = '마이크 권한이 거부되었습니다. 브라우저 설정에서 마이크를 허용해 주세요.';
+        statusEl.classList.add('error');
+        updateUI();
+      }
+      // 'no-speech', 'aborted' 등은 onend의 자동 재시작에 맡긴다
+    };
+
+    r.onend = function () {
+      commitSession();
+      render('');
+      if (listening) {
+        // iOS 사파리는 침묵 시 세션이 스스로 끝나므로 재시작해서 연속 인식처럼 동작시킨다
+        setTimeout(function () {
+          if (!listening) return;
+          try {
+            recognition = createRecognition();
+            recognition.start();
+          } catch (err) {
+            listening = false;
+            updateUI();
+          }
+        }, 150);
+      } else {
+        updateUI();
+      }
+    };
+
+    return r;
+  }
+
+  function start() {
+    listening = true;
+    statusEl.classList.remove('error');
+    try {
+      recognition = createRecognition();
+      recognition.start();
+    } catch (err) {
+      listening = false;
+      statusEl.textContent = '음성 인식을 시작할 수 없습니다: ' + err.message;
+      statusEl.classList.add('error');
+    }
+    updateUI();
+  }
+
+  function stop() {
+    listening = false;
+    if (recognition) {
+      try { recognition.stop(); } catch (err) { /* 이미 종료된 경우 무시 */ }
+    }
+    updateUI();
+  }
+
+  micBtn.addEventListener('click', function () {
+    if (listening) stop();
+    else start();
+  });
+
+  clearBtn.addEventListener('click', function () {
+    committedText = '';
+    sessionFinal = '';
+    render('');
+    showToast('지웠습니다');
+  });
+
+  copyBtn.addEventListener('click', function () {
+    const text = (committedText + sessionFinal).trim();
+    if (!text) { showToast('복사할 내용이 없습니다'); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(function () { showToast('복사했습니다'); })
+        .catch(function () { fallbackCopy(text); });
+    } else {
+      fallbackCopy(text);
+    }
+  });
+
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {
+      document.execCommand('copy');
+      showToast('복사했습니다');
+    } catch (err) {
+      showToast('복사에 실패했습니다');
+    }
+    document.body.removeChild(ta);
+  }
+
+  langSelect.addEventListener('change', function () {
+    if (listening) {
+      // 언어 변경 시 현재 세션을 끊으면 onend에서 새 언어로 재시작된다
+      try { recognition.stop(); } catch (err) { /* 무시 */ }
+    }
+  });
+
+  render('');
+})();
+</script>
+</body>
+</html>
