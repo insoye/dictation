@@ -200,11 +200,30 @@
   const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
+  const STORAGE_TEXT = 'dictation.text';
+  const STORAGE_LANG = 'dictation.lang';
+
   let recognition = null;
   let listening = false;      // 사용자가 켜둔 상태인지 (자동 재시작 판단용)
-  let committedText = '';     // 이전 세션까지 확정된 텍스트
-  let sessionFinal = '';      // 현재 세션에서 확정된 텍스트
+  let committedText = '';     // 확정된 텍스트 (final 결과가 도착하는 즉시 커밋)
   let toastTimer = null;
+
+  // localStorage는 일부 환경(프라이빗 모드 등)에서 접근 자체가 막힐 수 있어 감싸둔다
+  function storageGet(key) {
+    try { return localStorage.getItem(key); } catch (err) { return null; }
+  }
+  function storageSet(key, value) {
+    try { localStorage.setItem(key, value); } catch (err) { /* 저장 불가 환경 무시 */ }
+  }
+  function storageRemove(key) {
+    try { localStorage.removeItem(key); } catch (err) { /* 무시 */ }
+  }
+
+  committedText = storageGet(STORAGE_TEXT) || '';
+  const savedLang = storageGet(STORAGE_LANG);
+  if (savedLang && langSelect.querySelector('option[value="' + savedLang + '"]')) {
+    langSelect.value = savedLang;
+  }
 
   function showToast(msg) {
     toastEl.textContent = msg;
@@ -214,7 +233,7 @@
   }
 
   function render(interim) {
-    const finalText = (committedText + sessionFinal).trimStart();
+    const finalText = committedText.trimStart();
     transcriptEl.classList.toggle('placeholder', !finalText && !interim);
     transcriptEl.innerHTML = '';
     if (finalText) transcriptEl.appendChild(document.createTextNode(finalText));
@@ -239,13 +258,6 @@
     }
   }
 
-  function commitSession() {
-    if (sessionFinal) {
-      committedText = (committedText + sessionFinal).replace(/\s+$/, '') + ' ';
-      sessionFinal = '';
-    }
-  }
-
   function createRecognition() {
     const r = new SR();
     r.lang = langSelect.value;
@@ -254,13 +266,25 @@
     r.continuous = !IS_IOS;
     r.maxAlternatives = 1;
 
+    // final 결과는 도착 즉시 committedText에 커밋한다.
+    // e.results를 매번 처음부터 재구성하면 엔진이 앞선 결과를 빼고 보내는 경우
+    // (iOS 사파리, 크롬 장시간 세션) 이미 표시된 문장이 사라지기 때문.
+    // committedIndex는 같은 결과가 두 번 커밋되는 것을 막는다 (iOS 중복 이벤트 대응).
+    let committedIndex = -1;
+
     r.onresult = function (e) {
       let interim = '';
-      sessionFinal = '';
-      for (let i = 0; i < e.results.length; i++) {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) sessionFinal += t;
-        else interim += t;
+        if (e.results[i].isFinal) {
+          if (i > committedIndex && t.trim()) {
+            committedText = (committedText + t).replace(/\s+$/, '') + ' ';
+            committedIndex = i;
+            storageSet(STORAGE_TEXT, committedText);
+          }
+        } else {
+          interim += t;
+        }
       }
       render(interim);
     };
@@ -276,7 +300,6 @@
     };
 
     r.onend = function () {
-      commitSession();
       render('');
       if (listening) {
         // iOS 사파리는 침묵 시 세션이 스스로 끝나므로 재시작해서 연속 인식처럼 동작시킨다
@@ -327,13 +350,13 @@
 
   clearBtn.addEventListener('click', function () {
     committedText = '';
-    sessionFinal = '';
+    storageRemove(STORAGE_TEXT);
     render('');
     showToast('지웠습니다');
   });
 
   copyBtn.addEventListener('click', function () {
-    const text = (committedText + sessionFinal).trim();
+    const text = committedText.trim();
     if (!text) { showToast('복사할 내용이 없습니다'); return; }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text)
@@ -362,6 +385,7 @@
   }
 
   langSelect.addEventListener('change', function () {
+    storageSet(STORAGE_LANG, langSelect.value);
     if (listening) {
       // 언어 변경 시 현재 세션을 끊으면 onend에서 새 언어로 재시작된다
       try { recognition.stop(); } catch (err) { /* 무시 */ }
